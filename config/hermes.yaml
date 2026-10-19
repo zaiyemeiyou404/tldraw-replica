@@ -1,0 +1,11 @@
+# Hermes MCP snippet. Merge into the Hermes config the app actually loads.
+# stdio starts the canvas server itself. The board URL is printed on stderr
+# and returned by open_board.
+mcp_servers:
+  tldraw-local:
+    command: node
+    args:
+      - C:\path\to\tldraw-codex-plugin\dist\cli.js
+      - stdio
+    env:
+      TLDRAW_BOARDS_DIR: C:\Users\you\.tldraw-codex-plugin\boards

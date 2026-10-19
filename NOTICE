@@ -1,0 +1,11 @@
+This repository is an independent clean-room replica of the tool surface described
+by the tldraw Codex plugin skill (v1.1.0). It is not published by tldraw Inc.
+and it does not connect to tldraw.com or codex-app.tldraw.xyz.
+
+The tldraw SDK packages (tldraw, @tldraw/editor, @tldraw/sync, @tldraw/sync-core,
+@tldraw/mermaid, @tldraw/tlschema, and their dependencies) are third-party
+software. Use them under the license shipped in each package. Without a tldraw
+license key the editor shows its watermark; this project does not hide or
+remove that watermark.
+
+The Model Context Protocol SDK packages are under their own licenses.

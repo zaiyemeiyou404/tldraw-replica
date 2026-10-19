@@ -1,0 +1,127 @@
+html,
+body,
+#root {
+	height: 100%;
+	margin: 0;
+}
+
+body {
+	font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+	color: #222;
+	background: #f7f7f5;
+}
+
+.shell {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+}
+
+.topbar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 10px;
+	background: #fff;
+	border-bottom: 1px solid #e4e4e0;
+	flex: 0 0 auto;
+}
+
+.topbar h1 {
+	font-size: 14px;
+	font-weight: 650;
+	margin: 0;
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.topbar a,
+.topbar button {
+	font: inherit;
+	font-size: 12px;
+	border: 1px solid #d5d5d0;
+	background: #fff;
+	border-radius: 999px;
+	padding: 4px 8px;
+	color: inherit;
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.badge {
+	font-size: 11px;
+	background: #fff4d6;
+	color: #6a4b00;
+	border-radius: 999px;
+	padding: 2px 8px;
+}
+
+.canvas {
+	position: relative;
+	flex: 1;
+	min-height: 0;
+}
+
+.canvas .fill {
+	position: absolute;
+	inset: 0;
+}
+
+.home {
+	padding: 16px;
+	max-width: 440px;
+}
+
+.home h1 {
+	font-size: 22px;
+	margin: 0 0 4px;
+}
+
+.home p {
+	margin: 0 0 16px;
+	color: #555;
+	font-size: 14px;
+}
+
+.board-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.board-list a {
+	display: block;
+	background: #fff;
+	border: 1px solid #e4e4e0;
+	border-radius: 12px;
+	padding: 12px;
+	text-decoration: none;
+	color: inherit;
+}
+
+.board-list strong {
+	display: block;
+}
+
+.board-list span {
+	display: block;
+	margin-top: 4px;
+	color: #666;
+	font-size: 12px;
+}
+
+.status {
+	padding: 24px 16px;
+	font-size: 14px;
+}
+
+.status.error {
+	color: #8d1d1d;
+}

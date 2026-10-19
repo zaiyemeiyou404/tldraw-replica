@@ -1,0 +1,56 @@
+{
+  "name": "tldraw-codex-plugin",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Clean-room local replica of the tldraw Codex plugin (v1.1.0): MCP tools, local .tldr boards, and an MCP Apps canvas.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "bin": {
+    "tldraw-codex-plugin": "./dist/cli.js"
+  },
+  "scripts": {
+    "extract-spec": "tsx scripts/extract-spec.ts",
+    "build:server": "tsc -p tsconfig.json",
+    "build:view": "vite build",
+    "build": "npm run extract-spec && npm run build:server && npm run build:view",
+    "start": "node dist/cli.js http",
+    "start:stdio": "node dist/cli.js stdio",
+    "test": "npm run build && node --test --test-concurrency=1 --test-timeout 600000 dist/tests/*.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "^2.3.1",
+    "@modelcontextprotocol/express": "^2.0.2",
+    "@modelcontextprotocol/ext-apps": "^2.0.3",
+    "@modelcontextprotocol/node": "^2.1.1",
+    "@modelcontextprotocol/server": "^2.3.1",
+    "@tldraw/mermaid": "5.5.2",
+    "@tldraw/sync": "5.5.2",
+    "@tldraw/sync-core": "5.5.2",
+    "@tldraw/tlschema": "5.5.2",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "tldraw": "5.5.2",
+    "ws": "^8.22.0",
+    "zod": "^4.2.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.19.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^4.7.0",
+    "playwright": "^1.56.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.0",
+    "vite-plugin-singlefile": "^2.3.0"
+  }
+}

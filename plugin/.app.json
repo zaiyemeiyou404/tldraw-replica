@@ -1,0 +1,8 @@
+{
+	"apps": {
+		"tldraw-local": {
+			"id": "asdk_app_tldraw_local",
+			"required": true
+		}
+	}
+}

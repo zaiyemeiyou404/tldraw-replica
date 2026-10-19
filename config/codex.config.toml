@@ -1,0 +1,6 @@
+# Optional Codex MCP entry, if you are not installing the plugin folder.
+# Start the server first: npm start
+# The plugin package in plugin/ points at the same URL.
+
+[mcp_servers.tldraw-local]
+url = "http://127.0.0.1:8791/mcp"

@@ -1,0 +1,31 @@
+{
+	"$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+	"name": "tldraw-local",
+	"version": "1.1.0",
+	"description": "Local clean-room replica of the tldraw Codex plugin. Boards are .tldr files on this machine.",
+	"author": {
+		"name": "local replica"
+	},
+	"license": "MIT",
+	"extensions": {
+		"com.openai": {
+			"interface": {
+				"displayName": "tldraw",
+				"shortDescription": "Draw and diagram with agents",
+				"longDescription": "Local replica of the tldraw Codex plugin. You and your agent draw on an infinite canvas stored as .tldr files on this computer. It is not the official tldraw.com plugin and does not sign in to tldraw.com.",
+				"developerName": "local replica",
+				"category": "Productivity",
+				"capabilities": ["Interactive", "Read", "Write"],
+				"composerIcon": "./assets/icon.svg",
+				"logo": "./assets/icon.svg",
+				"defaultPrompt": [
+					"draw a sequence diagram of what happens when a user logs in",
+					"wireframe a login screen for a mobile app",
+					"build a reference board of Art Deco poster designs"
+				],
+				"brandColor": "#4465e9"
+			},
+			"apps": "./.app.json"
+		}
+	}
+}
