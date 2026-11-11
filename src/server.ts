@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { createServer as createHttpServer, type Server } from 'node:http'
 import { readFileSync, existsSync } from 'node:fs'
 import path from 'node:path'
@@ -132,9 +133,17 @@ export async function startHttpServer(opts: StartOptions): Promise<RunningServer
 	// messages and, unless that request is 405, treats every dropped stream as
 	// a failure and reconnects it. A stateless server has no session to push
 	// to, so a 200 here is a stream that can never deliver anything.
+	// GPT drops the connection when a POST response has no Mcp-Session-Id and
+	// then connects again. Echo the client's id, or issue one, without
+	// storing a session. JSON responses avoid an SSE body that ends as soon
+	// as the tool result is written, which those clients also treat as a drop.
 	app.post('/mcp', async (req, res) => {
 		const mcp = createMcpServer(host)
-		const transport = new NodeStreamableHTTPServerTransport({ sessionIdGenerator: undefined })
+		const transport = new NodeStreamableHTTPServerTransport({
+			sessionIdGenerator: undefined,
+			enableJsonResponse: true,
+		})
+		echoSessionId(res, sessionIdFor(req))
 		res.on('close', () => {
 			transport.close().catch(() => {})
 			mcp.close().catch(() => {})
@@ -218,6 +227,26 @@ export function injectBootstrap(html: string, origin: string, library: Pick<Boar
 	if (!head) return `<!doctype html><html><head>${bootstrap}</head>${html}`
 	const at = head.index + head[0].length
 	return html.slice(0, at) + bootstrap + html.slice(at)
+}
+
+function sessionIdFor(req: Request): string {
+	const raw = req.headers['mcp-session-id']
+	const value = (Array.isArray(raw) ? raw[0] : raw)?.trim()
+	if (value) return value
+	return randomUUID()
+}
+
+function echoSessionId(res: Response, sessionId: string) {
+	const writeHead = res.writeHead.bind(res) as (...args: unknown[]) => Response
+	res.writeHead = ((...args: unknown[]) => {
+		const headers = args[args.length - 1]
+		if (headers && typeof headers === 'object' && !Array.isArray(headers)) {
+			;(headers as Record<string, unknown>)['mcp-session-id'] = sessionId
+		} else {
+			res.setHeader('mcp-session-id', sessionId)
+		}
+		return writeHead(...args)
+	}) as typeof res.writeHead
 }
 
 function methodNotAllowed(_req: Request, res: Response) {
