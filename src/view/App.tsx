@@ -244,10 +244,28 @@ function Board({ boardId, app, onHome }: { boardId: string; app: McpApp | null; 
 				signedIn: boot.signedIn,
 				allowCommentWrite: false,
 			}
-			const ws = new WebSocket(`${boot.origin.replace(/^http/, 'ws')}/api/bridge/${encodeURIComponent(boardId)}`)
-			ws.onmessage = (event) => {
-				void handleBridgeMessage(ws, editor, ctx, event.data, setReadOnly)
+			let stopped = false
+			let bridge: WebSocket | null = null
+			let attempt = 0
+			let retryTimer = 0
+			const connectBridge = () => {
+				if (stopped) return
+				const ws = new WebSocket(`${boot.origin.replace(/^http/, 'ws')}/api/bridge/${encodeURIComponent(boardId)}`)
+				bridge = ws
+				ws.onopen = () => {
+					attempt = 0
+				}
+				ws.onmessage = (event) => {
+					void handleBridgeMessage(ws, editor, ctx, event.data, setReadOnly)
+				}
+				ws.onclose = () => {
+					if (stopped || bridge !== ws) return
+					const delay = Math.min(5000, 250 * 2 ** attempt)
+					attempt += 1
+					retryTimer = window.setTimeout(connectBridge, delay)
+				}
 			}
+			connectBridge()
 			const publish = () => {
 				const host = appRef.current
 				if (!host) return
@@ -268,8 +286,10 @@ function Board({ boardId, app, onHome }: { boardId: string; app: McpApp | null; 
 			const timer = window.setInterval(publish, 2000)
 			publish()
 			return () => {
+				stopped = true
+				window.clearTimeout(retryTimer)
 				window.clearInterval(timer)
-				ws.close()
+				bridge?.close()
 				if (window.__tldrawEditor === editor) {
 					window.__tldrawReady = false
 					window.__tldrawEditor = undefined
@@ -348,54 +368,51 @@ async function handleBridgeMessage(
 		try {
 			const payload = await runExec(editor, message.code, ctx, new AbortController().signal)
 			flushSyncNow()
-			ws.send(
-				JSON.stringify({
-					type: 'exec-result',
-					code: message.code,
-					ok: true,
-					result: payload.result,
-					changes: payload.changes,
-				}),
-			)
+			sendBridge(ws, {
+				type: 'exec-result',
+				code: message.code,
+				ok: true,
+				result: payload.result,
+				changes: payload.changes,
+			})
 		} catch (error) {
 			flushSyncNow()
-			ws.send(
-				JSON.stringify({
-					type: 'exec-result',
-					code: message.code,
-					ok: false,
-					error: error instanceof Error ? error.message : String(error),
-				}),
-			)
+			sendBridge(ws, {
+				type: 'exec-result',
+				code: message.code,
+				ok: false,
+				error: error instanceof Error ? error.message : String(error),
+			})
 		}
 		return
 	}
 	if (message.type === 'screenshot' && message.requestId) {
 		try {
 			const image = await capture(editor, message.scope ?? 'viewport', message.page, message.theme)
-			ws.send(
-				JSON.stringify({
-					type: 'screenshot-result',
-					requestId: message.requestId,
-					ok: true,
-					boardId: ctx.boardId,
-					scope: message.scope ?? 'viewport',
-					pngBase64: image.pngBase64,
-					width: image.width,
-					height: image.height,
-				}),
-			)
+			sendBridge(ws, {
+				type: 'screenshot-result',
+				requestId: message.requestId,
+				ok: true,
+				boardId: ctx.boardId,
+				scope: message.scope ?? 'viewport',
+				pngBase64: image.pngBase64,
+				width: image.width,
+				height: image.height,
+			})
 		} catch (error) {
-			ws.send(
-				JSON.stringify({
-					type: 'screenshot-result',
-					requestId: message.requestId,
-					ok: false,
-					error: error instanceof Error ? error.message : String(error),
-				}),
-			)
+			sendBridge(ws, {
+				type: 'screenshot-result',
+				requestId: message.requestId,
+				ok: false,
+				error: error instanceof Error ? error.message : String(error),
+			})
 		}
 	}
+}
+
+function sendBridge(ws: WebSocket, payload: unknown) {
+	if (ws.readyState !== WebSocket.OPEN) return
+	ws.send(JSON.stringify(payload))
 }
 
 async function capture(

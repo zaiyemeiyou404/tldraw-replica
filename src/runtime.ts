@@ -76,6 +76,7 @@ export class Runtime {
 	private readonly pendingExec = new Map<string, PendingExec>()
 	private readonly earlyExec = new Map<string, EarlyExec>()
 	private readonly pendingShot = new Map<string, PendingShot>()
+	private readonly syncGuards = new Map<string, SyncSocketGuard>()
 	readonly viewTimeoutMs: number
 	homeViews = 0
 
@@ -129,10 +130,29 @@ export class Runtime {
 
 	connectSync(board: BoardMeta, sessionId: string, socket: WebSocket) {
 		const room = this.roomFor(board)
+		const key = `${board.id}:${sessionId}`
+		// useSync reconnects with the same sessionId. TLSocketRoom leaves the
+		// previous socket's close listener in place, and that close cancels
+		// whichever session currently owns the id — including the replacement
+		// that just connected. Drop events from the socket we are replacing.
+		const previous = this.syncGuards.get(key)
+		if (previous) {
+			previous.suppress()
+			try {
+				previous.close()
+			} catch {
+				/* already closed */
+			}
+		}
+		const guard = new SyncSocketGuard(socket)
+		this.syncGuards.set(key, guard)
+		socket.on('close', () => {
+			if (this.syncGuards.get(key) === guard) this.syncGuards.delete(key)
+		})
 		const readOnly = board.sharing === 'view'
 		room.handleSocketConnect({
 			sessionId,
-			socket: socket as unknown as WebSocket,
+			socket: guard as unknown as WebSocket,
 			isReadonly: readOnly,
 			objectAccess: readOnly || !this.signedIn ? 'read' : 'write',
 			meta: this.sessionMeta(),
@@ -415,6 +435,7 @@ export class Runtime {
 	}
 
 	async close() {
+		this.syncGuards.clear()
 		for (const id of [...this.rooms.keys()]) this.flush(id)
 		for (const room of this.rooms.values()) {
 			try {
@@ -429,6 +450,56 @@ export class Runtime {
 			pending.reject(new Error('server closed'))
 		}
 		this.pendingExec.clear()
+	}
+}
+
+interface GuardedSocket {
+	readyState: number
+	send(data: string): void
+	close(code?: number, reason?: string): void
+	addEventListener(type: string, listener: (event: { data?: unknown }) => void): void
+	removeEventListener(type: string, listener: (event: { data?: unknown }) => void): void
+}
+
+class SyncSocketGuard {
+	private suppressed = false
+	private readonly listeners = new Map<(event: { data?: unknown }) => void, (event: { data?: unknown }) => void>()
+	private readonly raw: GuardedSocket
+
+	constructor(raw: WebSocket) {
+		this.raw = raw as unknown as GuardedSocket
+	}
+
+	get readyState() {
+		return this.raw.readyState
+	}
+
+	send(data: string) {
+		this.raw.send(data)
+	}
+
+	close(code?: number, reason?: string) {
+		this.raw.close(code, reason)
+	}
+
+	suppress() {
+		this.suppressed = true
+	}
+
+	addEventListener(type: string, listener: (event: { data?: unknown }) => void) {
+		const wrapped = (event: { data?: unknown }) => {
+			if (this.suppressed) return
+			listener(event)
+		}
+		this.listeners.set(listener, wrapped)
+		this.raw.addEventListener(type, wrapped)
+	}
+
+	removeEventListener(type: string, listener: (event: { data?: unknown }) => void) {
+		const wrapped = this.listeners.get(listener)
+		if (!wrapped) return
+		this.raw.removeEventListener(type, wrapped)
+		this.listeners.delete(listener)
 	}
 }
 
