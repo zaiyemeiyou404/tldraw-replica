@@ -101,7 +101,7 @@ Hermes 和 Cursor 一样，画布要在浏览器里打开 `open_board` 返回的
 
 ## 传输
 
-- **streamable HTTP**：`POST/GET/DELETE http://127.0.0.1:8791/mcp`。Codex 插件用这个。
+- **streamable HTTP**：`POST http://127.0.0.1:8791/mcp`。Codex 插件用这个。服务是无会话的，所以 `GET` 和 `DELETE` 返回 405。Codex 看到 405 就不会去重连一条永远收不到消息的 SSE。
 - **stdio**：`node dist/cli.js stdio` 或 `npm run start:stdio`。stdio 进程同时在本机起 HTTP，用来提供画布和 WebSocket。日志在 stderr。
 
 画布资源 URI 是 `ui://tldraw/canvas.html`，MIME 为 `text/html;profile=mcp-app`。侧栏里可以请求 inline、pip、fullscreen。

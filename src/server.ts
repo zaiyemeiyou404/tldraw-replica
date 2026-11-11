@@ -2,7 +2,7 @@ import { createServer as createHttpServer, type Server } from 'node:http'
 import { readFileSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import express, { type Request } from 'express'
+import express, { type Request, type Response } from 'express'
 import cors from 'cors'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { createMcpExpressApp } from '@modelcontextprotocol/express'
@@ -128,7 +128,11 @@ export async function startHttpServer(opts: StartOptions): Promise<RunningServer
 		}
 	})
 
-	app.all('/mcp', async (req, res) => {
+	// Stateless streamable HTTP. Codex opens GET /mcp to listen for server
+	// messages and, unless that request is 405, treats every dropped stream as
+	// a failure and reconnects it. A stateless server has no session to push
+	// to, so a 200 here is a stream that can never deliver anything.
+	app.post('/mcp', async (req, res) => {
 		const mcp = createMcpServer(host)
 		const transport = new NodeStreamableHTTPServerTransport({ sessionIdGenerator: undefined })
 		res.on('close', () => {
@@ -145,6 +149,8 @@ export async function startHttpServer(opts: StartOptions): Promise<RunningServer
 			}
 		}
 	})
+	app.get('/mcp', methodNotAllowed)
+	app.delete('/mcp', methodNotAllowed)
 
 	const httpServer = createHttpServer(app)
 	const wss = new WebSocketServer({ noServer: true })
@@ -212,6 +218,14 @@ export function injectBootstrap(html: string, origin: string, library: Pick<Boar
 	if (!head) return `<!doctype html><html><head>${bootstrap}</head>${html}`
 	const at = head.index + head[0].length
 	return html.slice(0, at) + bootstrap + html.slice(at)
+}
+
+function methodNotAllowed(_req: Request, res: Response) {
+	res.status(405).set('Allow', 'POST').json({
+		jsonrpc: '2.0',
+		error: { code: -32000, message: 'Method not allowed.' },
+		id: null,
+	})
 }
 
 function publicOrigin(req: Request, fallback: string) {

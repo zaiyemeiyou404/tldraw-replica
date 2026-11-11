@@ -61,7 +61,7 @@
 | 侧栏协议 | `ui/update-model-context`、`ui/message`、`ui/request-display-mode`、tool-input | 用 `@modelcontextprotocol/ext-apps` 的同样几项。模型上下文每 2 秒更新：打开的白板、页、选区、是否只读 |
 | 没有 MCP Apps 的宿主 | 侧栏即画布 | 必须打开 `open_board` 返回的 localhost 页面，否则 `exec` 会一直等到超时 |
 
-HTTP 用无会话的 streamable HTTP（每个请求一个 `McpServer`，共享同一个 `Runtime`）。Express 的 host 设成 `0.0.0.0` 只是为了关掉 SDK 默认的「只允许 localhost Origin」中间件，否则 Codex 沙箱 iframe 的 Origin 会被 403。套接字仍然只绑 `127.0.0.1`。代价是本机上任意网页都能调用这个 API。没有做 `TLDRAW_EXTRA_ORIGINS` 白名单。
+HTTP 用无会话的 streamable HTTP（每个请求一个 `McpServer`，共享同一个 `Runtime`）。`GET` 和 `DELETE /mcp` 返回 405，`Allow: POST`。无会话服务没有可以推送的会话；如果 `GET` 回 200 并挂住一条空 SSE，Codex 会把断流当成失败并一直重连。Express 的 host 设成 `0.0.0.0` 只是为了关掉 SDK 默认的「只允许 localhost Origin」中间件，否则 Codex 沙箱 iframe 的 Origin 会被 403。套接字仍然只绑 `127.0.0.1`。代价是本机上任意网页都能调用这个 API。没有做 `TLDRAW_EXTRA_ORIGINS` 白名单。
 
 同步房间用 `InMemorySyncStorage`，不用 `better-sqlite3`，这样 Windows 上不必编译原生模块。
 
