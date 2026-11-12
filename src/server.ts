@@ -2,7 +2,7 @@ import { createServer as createHttpServer, type Server } from 'node:http'
 import { readFileSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import express, { type Request } from 'express'
+import express, { type Request, type Response } from 'express'
 import cors from 'cors'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { createMcpExpressApp } from '@modelcontextprotocol/express'
@@ -128,9 +128,21 @@ export async function startHttpServer(opts: StartOptions): Promise<RunningServer
 		}
 	})
 
-	app.all('/mcp', async (req, res) => {
+	// Stateless streamable HTTP. The proxy in front of this port keeps one
+	// upstream GET open. A 405, or a stream that sends nothing and then
+	// closes, is a dropped connection, so the proxy dials again and the
+	// client stays in reconnect. GET writes a comment immediately and keeps
+	// writing one, and it stays open until the proxy itself disconnects.
+	// POST is one JSON body. GPT does not send Mcp-Session-Id back, so a
+	// missing id is echoed only when the client supplied it.
+	const listeners = new Set<ReturnType<typeof setInterval>>()
+	app.post('/mcp', async (req, res) => {
 		const mcp = createMcpServer(host)
-		const transport = new NodeStreamableHTTPServerTransport({ sessionIdGenerator: undefined })
+		const transport = new NodeStreamableHTTPServerTransport({
+			sessionIdGenerator: undefined,
+			enableJsonResponse: true,
+		})
+		echoSessionId(res, sessionIdFor(req))
 		res.on('close', () => {
 			transport.close().catch(() => {})
 			mcp.close().catch(() => {})
@@ -145,6 +157,8 @@ export async function startHttpServer(opts: StartOptions): Promise<RunningServer
 			}
 		}
 	})
+	app.get('/mcp', (req, res) => holdListener(req, res, listeners))
+	app.delete('/mcp', methodNotAllowed)
 
 	const httpServer = createHttpServer(app)
 	const wss = new WebSocketServer({ noServer: true })
@@ -171,7 +185,7 @@ export async function startHttpServer(opts: StartOptions): Promise<RunningServer
 		port,
 		origin,
 		runtime,
-		close: () => shutdown(httpServer, wss, runtime),
+		close: () => shutdown(httpServer, wss, runtime, listeners),
 	}
 }
 
@@ -214,10 +228,68 @@ export function injectBootstrap(html: string, origin: string, library: Pick<Boar
 	return html.slice(0, at) + bootstrap + html.slice(at)
 }
 
+function sessionIdFor(req: Request): string | undefined {
+	const raw = req.headers['mcp-session-id']
+	const value = (Array.isArray(raw) ? raw[0] : raw)?.trim()
+	return value || undefined
+}
+
+function echoSessionId(res: Response, sessionId: string | undefined) {
+	if (!sessionId) return
+	const writeHead = res.writeHead.bind(res) as (...args: unknown[]) => Response
+	res.writeHead = ((...args: unknown[]) => {
+		const headers = args[args.length - 1]
+		if (headers && typeof headers === 'object' && !Array.isArray(headers)) {
+			;(headers as Record<string, unknown>)['mcp-session-id'] = sessionId
+		} else {
+			res.setHeader('mcp-session-id', sessionId)
+		}
+		return writeHead(...args)
+	}) as typeof res.writeHead
+}
+
+const LISTENER_KEEPALIVE_MS = 5_000
+
+function holdListener(req: Request, res: Response, listeners: Set<ReturnType<typeof setInterval>>) {
+	res.writeHead(200, {
+		'Content-Type': 'text/event-stream',
+		'Cache-Control': 'no-cache, no-transform',
+		Connection: 'keep-alive',
+		'X-Accel-Buffering': 'no',
+	})
+	res.write(': connected\n\n')
+	const timer = setInterval(() => {
+		if (res.writableEnded || res.destroyed) return
+		res.write(': keepalive\n\n')
+	}, LISTENER_KEEPALIVE_MS)
+	listeners.add(timer)
+	const stop = () => {
+		clearInterval(timer)
+		listeners.delete(timer)
+	}
+	req.on('aborted', stop)
+	res.on('close', stop)
+}
+
+function methodNotAllowed(_req: Request, res: Response) {
+	res.status(405).set('Allow', 'POST').json({
+		jsonrpc: '2.0',
+		error: { code: -32000, message: 'Method not allowed.' },
+		id: null,
+	})
+}
+
+function forwarded(req: Request, name: string): string | undefined {
+	const raw = req.headers[name]
+	const value = (Array.isArray(raw) ? raw[0] : raw)?.split(',')[0]?.trim()
+	return value || undefined
+}
+
 function publicOrigin(req: Request, fallback: string) {
-	const hostHeader = req.get('host')
-	if (!hostHeader) return fallback
-	return `http://${hostHeader}`
+	const host = forwarded(req, 'x-forwarded-host') || req.get('host')
+	if (!host) return fallback
+	const proto = forwarded(req, 'x-forwarded-proto') || 'http'
+	return `${proto}://${host}`
 }
 
 function loadBuiltCanvas(): string {
@@ -232,11 +304,20 @@ function loadBuiltCanvas(): string {
 	return `<!doctype html><html><head><meta charset="utf-8"><title>tldraw</title></head><body><p>Canvas bundle is missing. Run npm run build.</p></body></html>`
 }
 
-async function shutdown(httpServer: Server, wss: WebSocketServer, runtime: Runtime) {
+async function shutdown(
+	httpServer: Server,
+	wss: WebSocketServer,
+	runtime: Runtime,
+	listeners: Set<ReturnType<typeof setInterval>>,
+) {
+	for (const timer of listeners) clearInterval(timer)
+	listeners.clear()
 	await runtime.close()
 	for (const client of wss.clients) client.close()
 	wss.close()
-	await new Promise<void>((resolve, reject) => {
+	const closed = new Promise<void>((resolve, reject) => {
 		httpServer.close((error) => (error ? reject(error) : resolve()))
 	})
+	httpServer.closeAllConnections()
+	await closed
 }
