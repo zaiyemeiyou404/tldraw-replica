@@ -101,7 +101,7 @@ Hermes 和 Cursor 一样，画布要在浏览器里打开 `open_board` 返回的
 
 ## 传输
 
-- **streamable HTTP**：`POST http://127.0.0.1:8791/mcp`。Codex 插件用这个。服务不保存会话。`GET` 和 `DELETE` 返回 405，Codex 看到 405 就不会去重连一条空 SSE。POST 响应带 `Mcp-Session-Id`：客户端带来的原样返回，没有就发一个新的。GPT 看不到这个头会把连接丢掉再连。响应体是 JSON，不是一段马上结束的 SSE。
+- **streamable HTTP**：`POST http://127.0.0.1:8791/mcp`。Codex 插件用这个。服务不保存会话。`GET` 和 `DELETE` 返回 405，Codex 看到 405 就不会去重连一条空 SSE。POST 只在客户端自己带了 `Mcp-Session-Id` 时原样回显，不会另发一个新的。GPT 后续请求不带这个头，如果每次响应都换一个 id，它会把会话当成被换掉并重新连接，界面就停在思考。`initialize` 也不宣告 `listChanged`，因为没有可以推送通知的流。响应体是 JSON。
 - **stdio**：`node dist/cli.js stdio` 或 `npm run start:stdio`。stdio 进程同时在本机起 HTTP，用来提供画布和 WebSocket。日志在 stderr。
 
 画布资源 URI 是 `ui://tldraw/canvas.html`，MIME 为 `text/html;profile=mcp-app`。侧栏里可以请求 inline、pip、fullscreen。

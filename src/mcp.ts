@@ -29,7 +29,16 @@ export interface McpHost {
 export function createMcpServer(host: McpHost): McpServer {
 	const server = new McpServer(
 		{ name: SERVER_NAME, version: SERVER_VERSION },
-		{ instructions: INSTRUCTIONS },
+		{
+			instructions: INSTRUCTIONS,
+			// Stateless HTTP has no stream to push list_changed on. Advertising
+			// the capability makes GPT open GET /mcp and wait for a notification
+			// that never arrives.
+			capabilities: {
+				tools: { listChanged: false },
+				resources: { listChanged: false },
+			},
+		},
 	)
 	const ui = { resourceUri: CANVAS_RESOURCE_URI }
 

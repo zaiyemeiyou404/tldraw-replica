@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { createServer as createHttpServer, type Server } from 'node:http'
 import { readFileSync, existsSync } from 'node:fs'
 import path from 'node:path'
@@ -133,10 +132,11 @@ export async function startHttpServer(opts: StartOptions): Promise<RunningServer
 	// messages and, unless that request is 405, treats every dropped stream as
 	// a failure and reconnects it. A stateless server has no session to push
 	// to, so a 200 here is a stream that can never deliver anything.
-	// GPT drops the connection when a POST response has no Mcp-Session-Id and
-	// then connects again. Echo the client's id, or issue one, without
-	// storing a session. JSON responses avoid an SSE body that ends as soon
-	// as the tool result is written, which those clients also treat as a drop.
+	// GPT does not send Mcp-Session-Id back on later calls. Minting a new id
+	// on each of those calls makes the client treat the session as replaced
+	// and reconnect, so the turn stays in thinking. Echo an id the client
+	// already sent, and leave the header off otherwise. JSON responses finish
+	// in one body instead of an SSE stream that ends when the result is written.
 	app.post('/mcp', async (req, res) => {
 		const mcp = createMcpServer(host)
 		const transport = new NodeStreamableHTTPServerTransport({
@@ -229,14 +229,14 @@ export function injectBootstrap(html: string, origin: string, library: Pick<Boar
 	return html.slice(0, at) + bootstrap + html.slice(at)
 }
 
-function sessionIdFor(req: Request): string {
+function sessionIdFor(req: Request): string | undefined {
 	const raw = req.headers['mcp-session-id']
 	const value = (Array.isArray(raw) ? raw[0] : raw)?.trim()
-	if (value) return value
-	return randomUUID()
+	return value || undefined
 }
 
-function echoSessionId(res: Response, sessionId: string) {
+function echoSessionId(res: Response, sessionId: string | undefined) {
+	if (!sessionId) return
 	const writeHead = res.writeHead.bind(res) as (...args: unknown[]) => Response
 	res.writeHead = ((...args: unknown[]) => {
 		const headers = args[args.length - 1]
