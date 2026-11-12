@@ -35,9 +35,9 @@ function openBrowser(url: string) {
 
 async function main() {
 	const mode = process.argv.includes('stdio') ? 'stdio' : 'http'
-	const requested = Number(process.env.TLDRAW_PORT ?? process.env.PORT ?? (mode === 'http' ? 8791 : 0))
+	const requested = Number(process.env.TLDRAW_PORT ?? process.env.PORT ?? (mode === 'http' ? 8792 : 0))
 	const running = await startHttpServer({
-		port: Number.isFinite(requested) ? requested : 8791,
+		port: Number.isFinite(requested) ? requested : 8792,
 		boardsDir: defaultBoardsDir(),
 		userId: process.env.TLDRAW_USER_ID,
 		userName: process.env.TLDRAW_USER_NAME,

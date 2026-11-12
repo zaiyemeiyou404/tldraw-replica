@@ -3,7 +3,7 @@
 	"mcpServers": {
 		"tldraw-local": {
 			"type": "streamable-http",
-			"url": "http://localhost:8791/mcp"
+			"url": "http://localhost:8792/mcp"
 		}
 	}
 }

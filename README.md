@@ -12,7 +12,7 @@ npm run build
 npm start
 ```
 
-服务默认在 [http://127.0.0.1:8791](http://127.0.0.1:8791)。MCP 端点写 `http://localhost:8791/mcp`，避免系统代理把 `127.0.0.1` 转走。stdio 模式：`npm run start:stdio`。
+服务默认在 [http://127.0.0.1:8792](http://127.0.0.1:8792)。MCP 端点是 `http://localhost:8792/mcp`。8791 留给本机代理。stdio 模式：`npm run start:stdio`。
 
 ```bash
 npm test

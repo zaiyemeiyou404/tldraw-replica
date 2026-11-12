@@ -54,7 +54,7 @@
 
 | 点 | 官方 | 本复刻 |
 | --- | --- | --- |
-| MCP | `https://codex-app.tldraw.xyz/mcp` | `http://localhost:8791/mcp`，另有 stdio。用 localhost，是为了不把请求送进只绕过 localhost 的系统代理 |
+| MCP | `https://codex-app.tldraw.xyz/mcp` | `http://localhost:8792/mcp`，另有 stdio。8791 是本机代理常见入口，服务不占用它 |
 | 插件 id | `app-6ab242dbeb5c8191ba5277534ef0c570` | `tldraw-local`，避免和官方插件抢同一个 id |
 | 作者 | tldraw | `local replica`。显示名仍是 tldraw，这样技能触发词不变。图标是几何图形，不是官方标志 |
 | 资源 | 官方托管的 MCP App | `ui://tldraw/canvas.html`，单文件 HTML，CSP 的 connect / resource 域是本服务 origin 加 `blob:` |
