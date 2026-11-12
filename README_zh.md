@@ -39,7 +39,9 @@
 
    或 `scripts\test-windows.ps1`。GitHub Actions 工作流 `.github/workflows/ci.yml` 在 Ubuntu 和 Windows 上跑同一套测试。
 
-默认端口是 **8791**（`TLDRAW_PORT` 或 `PORT` 可改）。白板目录默认是：
+默认端口是 **8791**（`TLDRAW_PORT` 或 `PORT` 可改）。这个端口是白板服务自己的入口。如果本机代理已经占着 8791，请求进的是代理，不是这份服务，对话会停在思考。换一个空闲端口再改插件地址。客户端地址写 `localhost`，不要写 `127.0.0.1`：系统代理的绕过名单里常常只有 `localhost`，写 `127.0.0.1` 时 Codex 会把 MCP 送进代理，握手停住。确认服务在听：`curl --noproxy '*' http://127.0.0.1:8791/health` 应返回 `{"ok":true,"version":"1.1.0"}`。
+
+白板目录默认是：
 
 - Windows：`%USERPROFILE%\.tldraw-codex-plugin\boards`
 - 其他系统：`~/.tldraw-codex-plugin/boards`
@@ -62,11 +64,11 @@
 先让服务在 8791 端口跑起来（`npm start`）。Codex 的 `.mcp.json` 指向本机，不会自己拉起进程。
 
 1. 把仓库里的 `plugin` 目录复制到 Codex 的插件目录，文件夹名可以用 `tldraw-local`。插件 id 是 `tldraw-local`，故意和官方的 `app-6ab242dbeb5c8191ba5277534ef0c570` 错开，两个可以同时装。
-2. 插件里有 `plugin.json`、`.app.json`、`.mcp.json`、`assets/icon.svg`、`skills/tldraw/SKILL.md`。`.mcp.json` 的地址是 `http://127.0.0.1:8791/mcp`。
+2. 插件里有 `plugin.json`、`.app.json`、`.mcp.json`、`assets/icon.svg`、`skills/tldraw/SKILL.md`。`.mcp.json` 的地址是 `http://localhost:8791/mcp`。
 3. 在 Codex 里启用该插件。技能名仍然是 `tldraw`，触发方式和官方技能相同；正文只在「白板在本机」这一点上改过，见 `COMPARISON_zh.md`。
 4. 让助手 `create_board`，再 `open_board`。侧栏能显示 MCP App 时会加载 `ui://tldraw/canvas.html`。侧栏连不上本机 WebSocket 时，打开工具返回的 `http://127.0.0.1:8791/b/...`。
 
-不想用插件目录时，可以把 `config/codex.config.toml` 里的片段合并进 Codex 配置，效果同样是连 `http://127.0.0.1:8791/mcp`。
+不想用插件目录时，可以把 `config/codex.config.toml` 里的片段合并进 Codex 配置，效果同样是连 `http://localhost:8791/mcp`。
 
 ## Cursor
 
@@ -78,7 +80,7 @@ Cursor 没有 MCP Apps 侧栏。用 stdio，进程自己起画布服务，`open_
 
 ## Hermes
 
-`config/hermes.yaml` 是一段要合并进 Hermes MCP 配置的示例：用 `node` 跑 `dist\cli.js stdio`。Hermes 各版本的键名可能是 `mcp_servers` 或别的字段，以你安装的版本文档为准；传输要是 stdio，或者在服务已经启动时改成 streamable HTTP，URL 为 `http://127.0.0.1:8791/mcp`。
+`config/hermes.yaml` 是一段要合并进 Hermes MCP 配置的示例：用 `node` 跑 `dist\cli.js stdio`。Hermes 各版本的键名可能是 `mcp_servers` 或别的字段，以你安装的版本文档为准；传输要是 stdio，或者在服务已经启动时改成 streamable HTTP，URL 为 `http://localhost:8791/mcp`。
 
 Hermes 和 Cursor 一样，画布要在浏览器里打开 `open_board` 返回的地址。`exec` 会等到那个页面连上。
 
@@ -101,7 +103,7 @@ Hermes 和 Cursor 一样，画布要在浏览器里打开 `open_board` 返回的
 
 ## 传输
 
-- **streamable HTTP**：`POST http://127.0.0.1:8791/mcp`。Codex 插件用这个。服务不保存会话。`GET` 和 `DELETE` 返回 405，Codex 看到 405 就不会去重连一条空 SSE。POST 只在客户端自己带了 `Mcp-Session-Id` 时原样回显，不会另发一个新的。GPT 后续请求不带这个头，如果每次响应都换一个 id，它会把会话当成被换掉并重新连接，界面就停在思考。`initialize` 也不宣告 `listChanged`，因为没有可以推送通知的流。响应体是 JSON。
+- **streamable HTTP**：`POST http://localhost:8791/mcp`。Codex 插件用这个。地址用 `localhost`，避免系统代理把 `127.0.0.1` 拦进代理入口。服务不保存会话。`GET` 和 `DELETE` 返回 405，Codex 看到 405 就不会去重连一条空 SSE。POST 只在客户端自己带了 `Mcp-Session-Id` 时原样回显，不会另发一个新的。GPT 后续请求不带这个头，如果每次响应都换一个 id，它会把会话当成被换掉并重新连接，界面就停在思考。`initialize` 也不宣告 `listChanged`，因为没有可以推送通知的流。响应体是 JSON。
 - **stdio**：`node dist/cli.js stdio` 或 `npm run start:stdio`。stdio 进程同时在本机起 HTTP，用来提供画布和 WebSocket。日志在 stderr。
 
 画布资源 URI 是 `ui://tldraw/canvas.html`，MIME 为 `text/html;profile=mcp-app`。侧栏里可以请求 inline、pip、fullscreen。
