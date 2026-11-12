@@ -143,7 +143,7 @@ export async function startHttpServer(opts: StartOptions): Promise<RunningServer
 			sessionIdGenerator: undefined,
 			enableJsonResponse: true,
 		})
-		echoSessionId(res, sessionIdFor(req))
+		prepareMcpResponse(res, sessionIdFor(req))
 		res.on('close', () => {
 			transport.close().catch(() => {})
 			mcp.close().catch(() => {})
@@ -235,32 +235,50 @@ function sessionIdFor(req: Request): string | undefined {
 	return value || undefined
 }
 
-function echoSessionId(res: Response, sessionId: string | undefined) {
-	if (!sessionId) return
+function prepareMcpResponse(res: Response, sessionId: string | undefined) {
 	const writeHead = res.writeHead.bind(res) as (...args: unknown[]) => Response
 	res.writeHead = ((...args: unknown[]) => {
 		const headers = args[args.length - 1]
-		if (headers && typeof headers === 'object' && !Array.isArray(headers)) {
-			;(headers as Record<string, unknown>)['mcp-session-id'] = sessionId
-		} else {
-			res.setHeader('mcp-session-id', sessionId)
+		// A local proxy in front of 8791 buffers the body until the upstream
+		// socket closes. Closing after this response makes it forward the
+		// JSON instead of holding the client in thinking.
+		const extra: Record<string, unknown> = {
+			Connection: 'close',
+			'Cache-Control': 'no-cache, no-transform',
+			'X-Accel-Buffering': 'no',
 		}
+		if (sessionId) extra['mcp-session-id'] = sessionId
+		if (headers && typeof headers === 'object' && !Array.isArray(headers)) Object.assign(headers, extra)
+		else for (const [key, value] of Object.entries(extra)) res.setHeader(key, String(value))
 		return writeHead(...args)
 	}) as typeof res.writeHead
 }
 
 function methodNotAllowed(_req: Request, res: Response) {
-	res.status(405).set('Allow', 'POST').json({
-		jsonrpc: '2.0',
-		error: { code: -32000, message: 'Method not allowed.' },
-		id: null,
-	})
+	res
+		.status(405)
+		.set('Allow', 'POST')
+		.set('Connection', 'close')
+		.set('Cache-Control', 'no-cache, no-transform')
+		.set('X-Accel-Buffering', 'no')
+		.json({
+			jsonrpc: '2.0',
+			error: { code: -32000, message: 'Method not allowed.' },
+			id: null,
+		})
+}
+
+function forwarded(req: Request, name: string): string | undefined {
+	const raw = req.headers[name]
+	const value = (Array.isArray(raw) ? raw[0] : raw)?.split(',')[0]?.trim()
+	return value || undefined
 }
 
 function publicOrigin(req: Request, fallback: string) {
-	const hostHeader = req.get('host')
-	if (!hostHeader) return fallback
-	return `http://${hostHeader}`
+	const host = forwarded(req, 'x-forwarded-host') || req.get('host')
+	if (!host) return fallback
+	const proto = forwarded(req, 'x-forwarded-proto') || 'http'
+	return `${proto}://${host}`
 }
 
 function loadBuiltCanvas(): string {

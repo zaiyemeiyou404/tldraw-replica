@@ -3,4 +3,4 @@
 # The plugin package in plugin/ points at the same URL.
 
 [mcp_servers.tldraw-local]
-url = "http://localhost:8792/mcp"
+url = "http://127.0.0.1:8791/mcp"

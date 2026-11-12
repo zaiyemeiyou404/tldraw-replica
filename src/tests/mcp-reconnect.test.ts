@@ -24,6 +24,19 @@ async function stop(server: RunningServer | undefined, dir: string) {
 	await rm(dir, { recursive: true, force: true })
 }
 
+test('the canvas origin follows the proxy that forwarded the request', async () => {
+	const { dir, server } = await start()
+	try {
+		const response = await fetch(`${server.origin}/`, {
+			headers: { 'x-forwarded-host': '127.0.0.1:8791', 'x-forwarded-proto': 'http' },
+		})
+		const html = await response.text()
+		assert.match(html, /http:\/\/127\.0\.0\.1:8791/)
+	} finally {
+		await stop(server, dir)
+	}
+})
+
 test('GET and DELETE /mcp are 405 so Codex does not reconnect an empty SSE stream', async () => {
 	const { dir, server } = await start()
 	try {
@@ -42,6 +55,8 @@ test('GET and DELETE /mcp are 405 so Codex does not reconnect an empty SSE strea
 			const body = (await response.json()) as { error?: { message?: string } }
 			assert.equal(response.status, 405, method)
 			assert.equal(response.headers.get('allow'), 'POST')
+			assert.equal(response.headers.get('x-accel-buffering'), 'no')
+			assert.match(response.headers.get('cache-control') ?? '', /no-cache/)
 			assert.match(body.error?.message ?? '', /Method not allowed/)
 			assert.ok(Date.now() - started < 1000, `${method} hung`)
 		}
@@ -76,6 +91,8 @@ test('POST does not mint a session id, and echoes one the client already sent', 
 		assert.equal(init.status, 200)
 		assert.match(init.headers.get('content-type') ?? '', /^application\/json/)
 		assert.equal(init.headers.get('mcp-session-id'), null)
+		assert.equal(init.headers.get('x-accel-buffering'), 'no')
+		assert.match(init.headers.get('cache-control') ?? '', /no-cache/)
 		const body = (await init.json()) as {
 			result: {
 				serverInfo: { name: string }
