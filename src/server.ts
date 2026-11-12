@@ -128,22 +128,21 @@ export async function startHttpServer(opts: StartOptions): Promise<RunningServer
 		}
 	})
 
-	// Stateless streamable HTTP. Codex opens GET /mcp to listen for server
-	// messages and, unless that request is 405, treats every dropped stream as
-	// a failure and reconnects it. A stateless server has no session to push
-	// to, so a 200 here is a stream that can never deliver anything.
-	// GPT does not send Mcp-Session-Id back on later calls. Minting a new id
-	// on each of those calls makes the client treat the session as replaced
-	// and reconnect, so the turn stays in thinking. Echo an id the client
-	// already sent, and leave the header off otherwise. JSON responses finish
-	// in one body instead of an SSE stream that ends when the result is written.
+	// Stateless streamable HTTP. The proxy in front of this port keeps one
+	// upstream GET open. A 405, or a stream that sends nothing and then
+	// closes, is a dropped connection, so the proxy dials again and the
+	// client stays in reconnect. GET writes a comment immediately and keeps
+	// writing one, and it stays open until the proxy itself disconnects.
+	// POST is one JSON body. GPT does not send Mcp-Session-Id back, so a
+	// missing id is echoed only when the client supplied it.
+	const listeners = new Set<ReturnType<typeof setInterval>>()
 	app.post('/mcp', async (req, res) => {
 		const mcp = createMcpServer(host)
 		const transport = new NodeStreamableHTTPServerTransport({
 			sessionIdGenerator: undefined,
 			enableJsonResponse: true,
 		})
-		prepareMcpResponse(res, sessionIdFor(req))
+		echoSessionId(res, sessionIdFor(req))
 		res.on('close', () => {
 			transport.close().catch(() => {})
 			mcp.close().catch(() => {})
@@ -158,7 +157,7 @@ export async function startHttpServer(opts: StartOptions): Promise<RunningServer
 			}
 		}
 	})
-	app.get('/mcp', methodNotAllowed)
+	app.get('/mcp', (req, res) => holdListener(req, res, listeners))
 	app.delete('/mcp', methodNotAllowed)
 
 	const httpServer = createHttpServer(app)
@@ -186,7 +185,7 @@ export async function startHttpServer(opts: StartOptions): Promise<RunningServer
 		port,
 		origin,
 		runtime,
-		close: () => shutdown(httpServer, wss, runtime),
+		close: () => shutdown(httpServer, wss, runtime, listeners),
 	}
 }
 
@@ -235,37 +234,49 @@ function sessionIdFor(req: Request): string | undefined {
 	return value || undefined
 }
 
-function prepareMcpResponse(res: Response, sessionId: string | undefined) {
+function echoSessionId(res: Response, sessionId: string | undefined) {
+	if (!sessionId) return
 	const writeHead = res.writeHead.bind(res) as (...args: unknown[]) => Response
 	res.writeHead = ((...args: unknown[]) => {
 		const headers = args[args.length - 1]
-		// A local proxy in front of 8791 buffers the body until the upstream
-		// socket closes. Closing after this response makes it forward the
-		// JSON instead of holding the client in thinking.
-		const extra: Record<string, unknown> = {
-			Connection: 'close',
-			'Cache-Control': 'no-cache, no-transform',
-			'X-Accel-Buffering': 'no',
+		if (headers && typeof headers === 'object' && !Array.isArray(headers)) {
+			;(headers as Record<string, unknown>)['mcp-session-id'] = sessionId
+		} else {
+			res.setHeader('mcp-session-id', sessionId)
 		}
-		if (sessionId) extra['mcp-session-id'] = sessionId
-		if (headers && typeof headers === 'object' && !Array.isArray(headers)) Object.assign(headers, extra)
-		else for (const [key, value] of Object.entries(extra)) res.setHeader(key, String(value))
 		return writeHead(...args)
 	}) as typeof res.writeHead
 }
 
+const LISTENER_KEEPALIVE_MS = 5_000
+
+function holdListener(req: Request, res: Response, listeners: Set<ReturnType<typeof setInterval>>) {
+	res.writeHead(200, {
+		'Content-Type': 'text/event-stream',
+		'Cache-Control': 'no-cache, no-transform',
+		Connection: 'keep-alive',
+		'X-Accel-Buffering': 'no',
+	})
+	res.write(': connected\n\n')
+	const timer = setInterval(() => {
+		if (res.writableEnded || res.destroyed) return
+		res.write(': keepalive\n\n')
+	}, LISTENER_KEEPALIVE_MS)
+	listeners.add(timer)
+	const stop = () => {
+		clearInterval(timer)
+		listeners.delete(timer)
+	}
+	req.on('aborted', stop)
+	res.on('close', stop)
+}
+
 function methodNotAllowed(_req: Request, res: Response) {
-	res
-		.status(405)
-		.set('Allow', 'POST')
-		.set('Connection', 'close')
-		.set('Cache-Control', 'no-cache, no-transform')
-		.set('X-Accel-Buffering', 'no')
-		.json({
-			jsonrpc: '2.0',
-			error: { code: -32000, message: 'Method not allowed.' },
-			id: null,
-		})
+	res.status(405).set('Allow', 'POST').json({
+		jsonrpc: '2.0',
+		error: { code: -32000, message: 'Method not allowed.' },
+		id: null,
+	})
 }
 
 function forwarded(req: Request, name: string): string | undefined {
@@ -293,11 +304,20 @@ function loadBuiltCanvas(): string {
 	return `<!doctype html><html><head><meta charset="utf-8"><title>tldraw</title></head><body><p>Canvas bundle is missing. Run npm run build.</p></body></html>`
 }
 
-async function shutdown(httpServer: Server, wss: WebSocketServer, runtime: Runtime) {
+async function shutdown(
+	httpServer: Server,
+	wss: WebSocketServer,
+	runtime: Runtime,
+	listeners: Set<ReturnType<typeof setInterval>>,
+) {
+	for (const timer of listeners) clearInterval(timer)
+	listeners.clear()
 	await runtime.close()
 	for (const client of wss.clients) client.close()
 	wss.close()
-	await new Promise<void>((resolve, reject) => {
+	const closed = new Promise<void>((resolve, reject) => {
 		httpServer.close((error) => (error ? reject(error) : resolve()))
 	})
+	httpServer.closeAllConnections()
+	await closed
 }

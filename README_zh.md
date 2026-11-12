@@ -39,7 +39,7 @@
 
    或 `scripts\test-windows.ps1`。GitHub Actions 工作流 `.github/workflows/ci.yml` 在 Ubuntu 和 Windows 上跑同一套测试。
 
-默认端口是 **8791**（`TLDRAW_PORT` 或 `PORT` 可改）。这是本机代理把 MCP 送进服务的入口，插件地址保持 `http://127.0.0.1:8791/mcp`。代理常常把响应攒到上游连接关闭才转发；MCP 响应在正文写完后关闭连接，代理才能把结果交回去，界面才不会停在思考。确认服务在听：`curl --noproxy '*' http://127.0.0.1:8791/health` 应返回 `{"ok":true,"version":"1.1.0"}`。
+默认端口是 **8791**（`TLDRAW_PORT` 或 `PORT` 可改）。这是本机代理把 MCP 送进服务的入口，插件地址保持 `http://127.0.0.1:8791/mcp`。`GET /mcp` 立刻写出一行注释并保持打开，后面每 5 秒再写一行。代理看到这条流不断，就不会把它当成断线再重连。确认服务在听：`curl --noproxy '*' http://127.0.0.1:8791/health` 应返回 `{"ok":true,"version":"1.1.0"}`。
 
 白板目录默认是：
 
@@ -103,7 +103,7 @@ Hermes 和 Cursor 一样，画布要在浏览器里打开 `open_board` 返回的
 
 ## 传输
 
-- **streamable HTTP**：`POST http://127.0.0.1:8791/mcp`。这是代理把请求送进来的入口。服务不保存会话。MCP 响应带 `Connection: close`，代理不用一直握着上游连接。`GET` 和 `DELETE` 返回 405，Codex 看到 405 就不会去重连一条空 SSE。POST 只在客户端自己带了 `Mcp-Session-Id` 时原样回显，不会另发一个新的。GPT 后续请求不带这个头，如果每次响应都换一个 id，它会把会话当成被换掉并重新连接，界面就停在思考。`initialize` 也不宣告 `listChanged`，因为没有可以推送通知的流。响应体是 JSON。
+- **streamable HTTP**：`POST http://127.0.0.1:8791/mcp`。这是代理把请求送进来的入口。服务不保存会话。`GET /mcp` 是一条马上写出 `: connected`、并且一直保持的 SSE，避免代理把空流或 405 当成断线再重连。`DELETE` 返回 405。POST 只在客户端自己带了 `Mcp-Session-Id` 时原样回显。`initialize` 不宣告 `listChanged`。响应体是 JSON。
 - **stdio**：`node dist/cli.js stdio` 或 `npm run start:stdio`。stdio 进程同时在本机起 HTTP，用来提供画布和 WebSocket。日志在 stderr。
 
 画布资源 URI 是 `ui://tldraw/canvas.html`，MIME 为 `text/html;profile=mcp-app`。侧栏里可以请求 inline、pip、fullscreen。

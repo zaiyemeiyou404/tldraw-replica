@@ -61,7 +61,7 @@
 | 侧栏协议 | `ui/update-model-context`、`ui/message`、`ui/request-display-mode`、tool-input | 用 `@modelcontextprotocol/ext-apps` 的同样几项。模型上下文每 2 秒更新：打开的白板、页、选区、是否只读 |
 | 没有 MCP Apps 的宿主 | 侧栏即画布 | 必须打开 `open_board` 返回的 localhost 页面，否则 `exec` 会一直等到超时 |
 
-HTTP 用无会话的 streamable HTTP（每个请求一个 `McpServer`，共享同一个 `Runtime`）。`GET` 和 `DELETE /mcp` 返回 405，`Allow: POST`。无会话服务没有可以推送的会话；如果 `GET` 回 200 并挂住一条空 SSE，Codex 会把断流当成失败并一直重连。POST 只回显客户端自己带来的 `Mcp-Session-Id`，没有就不发。服务端不建会话表。GPT 的后续 `tools/call` 不带这个头；如果响应里每次都是一个新 id，客户端会丢掉这次结果并重连，对话就停在思考。`tools` 和 `resources` 的 `listChanged` 为 false，避免客户端去等一条不会出现的 `list_changed`。POST 用 JSON 正文，并带 `Connection: close`。8791 前面的本地代理会把上游响应攒到连接关闭才交给客户端；连接不关，GPT 就停在思考。画布页面认 `X-Forwarded-Host` 和 `X-Forwarded-Proto`，这样代理进来的请求生成的地址是客户端打得开的那个入口。Express 的 host 设成 `0.0.0.0` 只是为了关掉 SDK 默认的「只允许 localhost Origin」中间件，否则 Codex 沙箱 iframe 的 Origin 会被 403。套接字仍然只绑 `127.0.0.1`。代价是本机上任意网页都能调用这个 API。没有做 `TLDRAW_EXTRA_ORIGINS` 白名单。
+HTTP 用无会话的 streamable HTTP（每个请求一个 `McpServer`，共享同一个 `Runtime`）。`GET /mcp` 立刻回 `text/event-stream`，第一行是 `: connected`，之后每 5 秒一行 `: keepalive`，直到对端自己断开。8791 前面的代理把 405、或者一条零字节后又关掉的流，当成上游断线并重新拨号，客户端就停在重连。`DELETE /mcp` 返回 405，`Allow: POST`。POST 只回显客户端自己带来的 `Mcp-Session-Id`，没有就不发。服务端不建会话表。`tools` 和 `resources` 的 `listChanged` 为 false。POST 用 JSON 正文。画布页面认 `X-Forwarded-Host` 和 `X-Forwarded-Proto`。Express 的 host 设成 `0.0.0.0` 只是为了关掉 SDK 默认的「只允许 localhost Origin」中间件，否则 Codex 沙箱 iframe 的 Origin 会被 403。套接字仍然只绑 `127.0.0.1`。代价是本机上任意网页都能调用这个 API。没有做 `TLDRAW_EXTRA_ORIGINS` 白名单。
 
 同步房间用 `InMemorySyncStorage`，不用 `better-sqlite3`，这样 Windows 上不必编译原生模块。
 

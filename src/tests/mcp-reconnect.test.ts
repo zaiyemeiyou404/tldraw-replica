@@ -37,35 +37,51 @@ test('the canvas origin follows the proxy that forwarded the request', async () 
 	}
 })
 
-test('GET and DELETE /mcp are 405 so Codex does not reconnect an empty SSE stream', async () => {
+test('GET /mcp stays open and writes a comment before the proxy would reconnect', async () => {
 	const { dir, server } = await start()
 	try {
-		const headers = {
-			accept: 'text/event-stream, application/json',
-			'mcp-session-id': 'stale-session',
-			'mcp-protocol-version': '2025-11-25',
-		}
-		for (const method of ['GET', 'DELETE'] as const) {
-			const started = Date.now()
-			const response = await fetch(`${server.origin}/mcp`, {
-				method,
-				headers,
-				signal: AbortSignal.timeout(1000),
-			})
-			const body = (await response.json()) as { error?: { message?: string } }
-			assert.equal(response.status, 405, method)
-			assert.equal(response.headers.get('allow'), 'POST')
-			assert.equal(response.headers.get('x-accel-buffering'), 'no')
-			assert.match(response.headers.get('cache-control') ?? '', /no-cache/)
-			assert.match(body.error?.message ?? '', /Method not allowed/)
-			assert.ok(Date.now() - started < 1000, `${method} hung`)
-		}
+		const started = Date.now()
+		const response = await fetch(`${server.origin}/mcp`, {
+			method: 'GET',
+			headers: {
+				accept: 'text/event-stream, application/json',
+				'mcp-session-id': 'stale-session',
+				'mcp-protocol-version': '2025-11-25',
+			},
+		})
+		assert.equal(response.status, 200)
+		assert.match(response.headers.get('content-type') ?? '', /text\/event-stream/)
+		const reader = response.body?.getReader()
+		assert.ok(reader)
+		const first = await reader.read()
+		assert.equal(first.done, false)
+		assert.match(new TextDecoder().decode(first.value), /: connected/)
+		assert.ok(Date.now() - started < 1000)
+		await reader.cancel()
+
 		const probe = await fetch(`${server.origin}/mcp`, {
 			method: 'GET',
 			headers: { accept: '*/*' },
+		})
+		assert.equal(probe.status, 200)
+		await probe.body?.cancel()
+	} finally {
+		await stop(server, dir)
+	}
+})
+
+test('DELETE /mcp is 405', async () => {
+	const { dir, server } = await start()
+	try {
+		const response = await fetch(`${server.origin}/mcp`, {
+			method: 'DELETE',
+			headers: { accept: 'text/event-stream, application/json', 'mcp-session-id': 'stale-session' },
 			signal: AbortSignal.timeout(1000),
 		})
-		assert.equal(probe.status, 405)
+		const body = (await response.json()) as { error?: { message?: string } }
+		assert.equal(response.status, 405)
+		assert.equal(response.headers.get('allow'), 'POST')
+		assert.match(body.error?.message ?? '', /Method not allowed/)
 	} finally {
 		await stop(server, dir)
 	}
@@ -91,8 +107,6 @@ test('POST does not mint a session id, and echoes one the client already sent', 
 		assert.equal(init.status, 200)
 		assert.match(init.headers.get('content-type') ?? '', /^application\/json/)
 		assert.equal(init.headers.get('mcp-session-id'), null)
-		assert.equal(init.headers.get('x-accel-buffering'), 'no')
-		assert.match(init.headers.get('cache-control') ?? '', /no-cache/)
 		const body = (await init.json()) as {
 			result: {
 				serverInfo: { name: string }
